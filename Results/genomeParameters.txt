@@ -1,0 +1,19 @@
+### /projectnb/bubhub/conda_root/user_conda/jorofino/envs/proj1_revisited/bin/STAR-avx   --runMode genomeGenerate      --runThreadN 16   --genomeDir m39_star/   --genomeFastaFiles GRCm39.primary_assembly.genome.fa      --sjdbGTFfile gencode.vM33.primary_assembly.annotation.gtf   --sjdbOverhang 100
+### GstrandBit 32
+versionGenome	2.7.4a
+genomeType	Full
+genomeFastaFiles	GRCm39.primary_assembly.genome.fa 
+genomeSAindexNbases	14
+genomeChrBinNbits	18
+genomeSAsparseD	1
+genomeTransformType	None
+genomeTransformVCF	-
+sjdbOverhang	100
+sjdbFileChrStartEnd	- 
+sjdbGTFfile	gencode.vM33.primary_assembly.annotation.gtf
+sjdbGTFchrPrefix	-
+sjdbGTFfeatureExon	exon
+sjdbGTFtagExonParentTranscript	transcript_id
+sjdbGTFtagExonParentGene	gene_id
+sjdbInsertSave	Basic
+genomeFileSizes	2796660495 22379246690

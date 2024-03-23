@@ -1,0 +1,64 @@
+# we have given you the rules you will need to fill out remember when structuring your dependencies, 
+# we are only downloading the GTF and genome.fa, we will not be doing anything further with them this week
+
+NAMES = ['P0rep1subsample', 'P0rep2subsample', 'P4rep1subsample', 'P4rep2subsample', 'P7rep1subsample', 'P7rep2subsample', 'ADrep1subsample', 'ADrep2subsample']
+
+# Define all target rules
+rule all:
+    input:
+        'results/GRCm39.primary_assembly.genome.fa.gz',
+        'results/gencode.vM34.primary_assembly.annotation.gtf',
+        expand('results/{name}.Aligned.out.bam', name=NAMES),
+        expand('results/{name}_flagstats.txt', name=NAMES)
+
+rule wget_m39:
+    output:
+        'results/GRCm39.primary_assembly.genome.fa.gz'
+    params:
+        ftp_path = 'https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/GRCm39.primary_assembly.genome.fa.gz'
+    shell:
+        'wget -O {output} {params.ftp_path}'
+
+rule wget_m39_gtf:
+    output:
+        'results/gencode.vM34.primary_assembly.annotation.gtf.gz'
+    params:
+        ftp_path = 'https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/gencode.vM34.primary_assembly.annotation.gtf.gz'
+    shell:
+        'wget -O {output} {params.ftp_path}'
+
+rule unzip:
+    input:
+        gz = 'results/gencode.vM34.primary_assembly.annotation.gtf.gz'
+    output:
+        gtf = 'results/gencode.vM34.primary_assembly.annotation.gtf'
+    shell:
+        'gunzip -c {input.gz} > {output}'
+
+# Make sure to read up on how STAR names its output files
+rule star:
+    input:
+        r1 = 'samples/{name}_R1.fastq.gz',
+        r2 = 'samples/{name}_R2.fastq.gz',
+        star_dir = 'samples/m39_subset_star/'
+    output:    
+        bam = 'results/{name}.Aligned.out.bam'
+    params:
+        prefix = 'results/{name}.'
+    shell:
+        '''
+        star_cmd="STAR --genomeDir {input.star_dir} --readFilesIn {input.r1} {input.r2} --readFilesCommand zcat --outSAMtype BAM Unsorted --outFileNamePrefix {params.prefix}"
+        echo "Executing: $star_cmd"
+        $star_cmd
+        '''
+
+rule samtools_flagstat:
+    input:
+        bam = 'results/{name}.Aligned.out.bam'
+    output:
+        flagstats = 'results/{name}_flagstats.txt'
+    shell:
+        'samtools flagstat {input.bam} > {output.flagstats}'
+
+
+

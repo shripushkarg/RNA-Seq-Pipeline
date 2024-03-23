@@ -1,0 +1,36 @@
+# use the names variable to store your list of file names
+names = ["ADrep1subsample_R1", "ADrep1subsample_R2", "ADrep2subsample_R1", "ADrep2subsample_R2", "P0rep1subsample_R1", "P0rep1subsample_R2", "P0rep2subsample_R1", "P0rep2subsample_R2", "P4rep1subsample_R1", "P4rep1subsample_R2", "P4rep2subsample_R1", "P4rep2subsample_R2", "P7rep1subsample_R1", "P7rep1subsample_R2", "P7rep2subsample_R1", "P7rep2subsample_R2"]
+
+# your snakemake rule should produce the output from MultiQC, and if you link your rules inputs
+# and outputs, you should only have one file listed in your rule all
+rule all:
+    input:
+        'results/multiqc_report.html'
+
+# make sure to read the fastqc manual to get a sense for an appropriate running command
+# we have given you the basic structure of the snakemake rule to get you used to how they
+# are structured.
+rule fastqc:
+    input:
+        fastq = 'samples/{name}.fastq.gz',
+    output:
+        fastqc = 'results/{name}_fastqc.html',
+    params:
+        outdir = 'results/'
+    shell:
+        '''
+        module load fastqc
+        fastqc {input.fastq} --outdir {params.outdir}
+        '''
+
+# remember that you want MultiQC to run only after FastQC has run on all the files
+rule multiqc:
+    input:
+        expand('results/{name}_fastqc.html', name=names),
+    output:
+        'results/multiqc_report.html'
+    shell:
+        '''
+        module load multiqc
+        multiqc -o results results
+        '''

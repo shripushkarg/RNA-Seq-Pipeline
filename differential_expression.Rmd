@@ -5,3 +5,89 @@ output: html_document
 
 Use this notebook to perform differential expression and all other post-DE
 analyses. 
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load necessary libraries
+library(DESeq2)
+library(tidyverse)
+library(fgsea)
+library(dplyr)
+
+# Read in the counts matrix
+counts_matrix <- read.csv("/usr4/bf527/pushkar/Documents/bf591/verse_concat_filtered.csv", row.names = 1)
+
+# Create sample information dataframe (coldata)
+# Replace "SampleX" with your actual sample names
+coldata <- data.frame(sample = colnames(counts_matrix), 
+                      timepoint = c("P0", "P0", "P4", "P4", "P7", "P7", "AD", "AD"))
+
+# Perform differential expression analysis comparing P0 and AD timepoints
+dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
+                              colData = coldata,
+                              design = ~ timepoint)
+dds <- DESeq(dds)
+
+# Get differential expression results comparing P0 and AD timepoints
+results <- results(dds, contrast = c("timepoint", "P0", "AD"), alpha = 0.05)
+
+
+# Convert row names to a column in results_df
+results_df$gene <- rownames(results_df)
+
+# Read gene mapping file
+gene_names <- read.delim("/usr4/bf527/pushkar/Documents/bf591/id2gene.txt", header = FALSE)
+
+# Rename columns
+colnames(gene_names) <- c("gene", "gene_name")
+
+# Merge the two data frames
+results_with_names <- merge(results_df, gene_names, by = "gene", all.x = TRUE)
+
+
+# Print the results
+print(results_with_names)
+
+write.csv(results_with_names, file = "/usr4/bf527/pushkar/Documents/bf591/results_with_names.csv", row.names = FALSE)
+
+
+
+# Read in the results file
+DE_res <- read.csv("results_with_names.csv", header = TRUE)
+
+# Extract log fold changes and gene names
+rnks <- DE_res$log2FoldChange
+de_genes <- DE_res$gene_name
+
+# Set names for the log fold changes using gene names
+rnk_list <- setNames(rnks, de_genes)
+
+# Check if rnk_list has proper names
+print(names(rnk_list))
+
+# Now proceed with running fgsea
+gene_sets <- gmtPathways("m2.all.v2023.2.Mm.symbols.gmt")
+
+# Check if gene_sets is loaded properly
+print(head(gene_sets))
+
+fgsea_results <- fgsea(gene_sets, rnk_list, minSize = 15, maxSize = 500)
+fgsea_results <- fgsea_results %>% as_tibble()
+
+# Check the results
+print(fgsea_results %>% arrange(padj))
+
+# Extract top positive and negative results
+top_positive <- fgsea_results %>% 
+  filter(NES > 0) %>% 
+  arrange(desc(NES)) %>% 
+  head(20)
+
+top_negative <- fgsea_results %>% 
+  filter(NES < 0) %>% 
+  arrange(NES) %>% 
+  head(20)
+
+# Print top positive and negative results
+print(top_positive)
+print(top_negative)

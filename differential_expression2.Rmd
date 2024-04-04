@@ -1,0 +1,87 @@
+---
+title: "differential_expression"
+output: html_document
+date: '2024-03-01'
+---
+
+You may need to install some of these packages, you can try installing using 
+conda or install them directly here. Conda and R packages sometimes do not
+play nice with each other so I suggest you install them directly in R and then
+record which versions using `sessionInfo()`. 
+
+```{r setup, include=FALSE}
+library(DESeq2)
+library(tidyverse)
+library(forcats)
+library(data.table)
+library(fgsea)
+```
+
+
+```{r}
+counts <-  as.matrix(read.csv('results/verse_concat_filtered_vM34.csv', row.names = 'gene'))
+head(counts)
+```
+
+
+I manually construct the coldata dataframe using `c()` and `rep()`. Ensure that
+your samples are in the same order as they are found in your matrix. 
+
+I make time a factor so that I can set the reference level. This is the
+condition that will be the "baseline" that all fold changes are relative to. For
+example, when we are comparing AD and P0 samples, a gene that has higher counts
+in the AD samples will have a positive log2FoldChange.
+
+This reference level is subjective and does not change the actual results but 
+the interpretation of the results. It would be equally valid to set the reference
+level as AD, but then you will have to remember that your log2foldchanges are
+relative to the AD samples. 
+```{r}
+coldata <- data.frame(samples = colnames(counts), time = c(rep('P0', 2), rep('P4', 2), rep('P7', 2), rep('AD', 2)), row.names='samples')
+coldata$time <- as.factor(coldata$time)
+coldata$time <- relevel(coldata$time, ref='P0')
+coldata
+```
+
+Here we call DESeq2 as described in the vignette. We use the `DESeqDataSetFromMatrix`
+because we are starting with an external counts matrix.
+
+When extracting the results, I specifically ask for the comparison between AD 
+and P0 samples from the condition `time`. We set our timepoints as our condition
+of interest in the coldata encoded in that same column, `time`. You could also
+use this same argument, `results(contrast=c())` to pull out any other pairwise
+comparison of interest between our timepoints.
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = counts, colData = coldata, design = ~time)
+dds <- DESeq(dds)
+res <- results(dds, contrast=c('time', 'AD', 'P0'))
+```
+
+
+The DESeq2 vignette supplied this code and it simply arranges your results from
+the above code block in order of padj descending. The second line simply converts
+these results to a tibble for easier manipulation.
+```{r}
+resOrdered <- res[order(res$pvalue),]
+resOrdered %>% as_tibble(rownames='geneid')
+```
+
+Here I just read in my delimited file containing the mapping of gene IDs to 
+gene names as a tibble. 
+```{r}
+id2gene <- read_delim('results/id2gene.txt', col_names=c('geneids', 'genenames'))
+```
+
+I similarly convert the results to a tibble and give it a common column name
+for the gene IDs. The same column name used in the id2gene tibble. This will
+enable a `left_join()` which will preserve all of the original information from
+`res` but also add in the associated gene names from id2gene. The `arrange()`
+and `select` were just to make it more apparent that we now have the gene names
+present in this same tibble. 
+```{r}
+res %>% 
+  as_tibble(rownames='geneids') %>% 
+  left_join(id2gene, by='geneids') %>% 
+  arrange(padj) %>% 
+  select(geneids, genenames, padj, log2FoldChange)
+```

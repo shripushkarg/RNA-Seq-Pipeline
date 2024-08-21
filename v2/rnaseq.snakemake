@@ -1,0 +1,108 @@
+import pandas as pd
+
+# Read the sample sheet
+sample_csv = pd.read_csv('samplesheet.csv')
+
+# Extract unique sample names
+SAMPLES = sample_csv['sample'].tolist()
+
+rule all:
+    input:
+        'results/multiqc_report.html',
+        expand('results/trimmomatic/{sample}_R1_paired.fastq.gz', sample=SAMPLES),
+        expand('results/trimmomatic/{sample}_R2_paired.fastq.gz', sample=SAMPLES),
+        expand('results/star/{sample}_aligned.bam', sample=SAMPLES),
+        #expand('results/trimmomatic/{sample}_aligned.sorted.bam', sample=SAMPLES),
+        #expand('results/trimmomatic/{sample}_aligned.sorted.bam.bai', sample=SAMPLES),
+        directory('/projectnb/langchip/PersonalFolder/Shri/rnaseq/star_index')
+
+# FastQC rule
+rule fastqc:
+    input:
+        r1 = lambda wildcards: sample_csv.loc[sample_csv['sample'] == wildcards.sample, 'R1'].iloc[0],
+        r2 = lambda wildcards: sample_csv.loc[sample_csv['sample'] == wildcards.sample, 'R2'].iloc[0]
+    output:
+        r1 = 'results/fastqc/{sample}_R1_fastqc.html',
+        r2 = 'results/fastqc/{sample}_R2_fastqc.html'
+    shell:
+        'fastqc -o results/fastqc {input.r1} && fastqc -o results/fastqc {input.r2}'
+
+# MultiQC rule
+rule multiqc:
+    input:
+        expand('results/fastqc/{sample}_R1_fastqc.html', sample=SAMPLES),
+        expand('results/fastqc/{sample}_R2_fastqc.html', sample=SAMPLES)
+    output:
+        'results/multiqc_report.html'
+    shell:
+        'multiqc -o results results/fastqc'
+
+# Trimmomatic rule (replacing Cutadapt)
+rule trimmomatic:
+    input:
+        r1 = lambda wildcards: sample_csv.loc[sample_csv['sample'] == wildcards.sample, 'R1'].iloc[0],
+        r2 = lambda wildcards: sample_csv.loc[sample_csv['sample'] == wildcards.sample, 'R2'].iloc[0]
+    output:
+        r1_paired = 'results/trimmomatic/{sample}_R1_paired.fastq.gz',
+        r1_unpaired = 'results/trimmomatic/{sample}_R1_unpaired.fastq.gz',
+        r2_paired = 'results/trimmomatic/{sample}_R2_paired.fastq.gz',
+        r2_unpaired = 'results/trimmomatic/{sample}_R2_unpaired.fastq.gz'
+    params:
+        adapters = '/path/to/adapters/TruSeq3-PE-2.fa'  # Adjust to the correct path for adapter sequences
+    shell:
+        '''
+        trimmomatic PE -threads 4 \
+        {input.r1} {input.r2} \
+        {output.r1_paired} {output.r1_unpaired} \
+        {output.r2_paired} {output.r2_unpaired} \
+        ILLUMINACLIP:{params.adapters}:2:30:10:8:true \
+        LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+        '''
+
+# STAR Index rule
+rule star_index:
+    input:
+        fasta = '/projectnb/langchip/PersonalFolder/Shri/atacseq/results/hg19.fa',
+        gtf = '/projectnb/langchip/PersonalFolder/Shri/atacseq/results/hg19_annotation.gtf'
+    output:
+        directory('/projectnb/langchip/PersonalFolder/Shri/rnaseq/star_index')
+    params:
+        genomeDir = '/projectnb/langchip/PersonalFolder/Shri/rnaseq/star_index'
+    shell:
+        'STAR --runThreadN 4 --runMode genomeGenerate --genomeDir {params.genomeDir} --genomeFastaFiles {input.fasta} --sjdbGTFfile {input.gtf}'
+
+# STAR Alignment rule
+rule star_align:
+    input:
+        r1 = '/projectnb/langchip/PersonalFolder/Shri/rnaseq/results/trimmomatic/Skmel5E1Sc_R1_paired.fastq.gz',
+        r2 = '/projectnb/langchip/PersonalFolder/Shri/rnaseq/results/trimmomatic/Skmel5E1Sc_R2_paired.fastq.gz'
+    output:
+        'results/star/{sample}_aligned.bam'
+    params:
+        starIndex = '/projectnb/langchip/PersonalFolder/Shri/rnaseq/star_index'
+    shell:
+        'STAR --genomeDir {params.starIndex} --readFilesIn {input.r1} {input.r2} --outFileNamePrefix results/star/{wildcards.sample}_ --outSAMtype BAM SortedByCoordinate'
+
+# Sort and Index BAM rule
+rule sort_and_index_bam:
+    input:
+        bam = 'results/star/{sample}_aligned.bam'
+    output:
+        sorted_bam = 'results/star/{sample}_aligned.sorted.bam',
+        bai = 'results/star/{sample}_aligned.sorted.bam.bai'
+    shell:
+        '''
+        samtools sort -o {output.sorted_bam} {input.bam}
+        samtools index {output.sorted_bam}
+        '''
+
+rule featurecounts:
+    input:
+        bam = 'results/star/{sample}_aligned.sorted.bam',
+        gtf = '/projectnb/langchip/PersonalFolder/Shri/atacseq/results/hg19_annotation.gtf'
+    output:
+        counts = 'results/featurecounts/{sample}_counts.txt'
+    shell:
+        '''
+        featureCounts -T 4 -t exon -g gene_id -a {input.gtf} -o {output.counts} {input.bam}
+        '''
